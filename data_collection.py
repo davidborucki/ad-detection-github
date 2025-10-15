@@ -4,7 +4,7 @@ import whisper
 from yt_dlp import YoutubeDL
 
 # Load Whisper (small/base/medium/large)
-model = whisper.load_model("small")  # speed vs accuracy tradeoff
+model = whisper.load_model("medium")  # speed vs accuracy tradeoff
 
 SAVE_DIR = "transcripts"
 os.makedirs(SAVE_DIR, exist_ok=True)
