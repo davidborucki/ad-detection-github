@@ -89,6 +89,10 @@ def transcribe_audio(audio_path: Path, transcript_path: Path, video_id: str) -> 
     transcript_path.write_text(text, encoding="utf-8")
     logger.info(f"💾  Transcription saved to {transcript_path}")
 
+    try:
+        audio_path.unlink(missing_ok=True)
+    except OSError as err:
+        logger.warning("Unable to delete audio file {audio_path}: {err}")
 
 def process_video(video_id: str) -> None:
     mp3_path = SAVE_DIR / f"{video_id}.mp3"
