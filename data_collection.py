@@ -10,6 +10,8 @@ from yt_dlp import YoutubeDL
 
 SAVE_DIR = Path("transcripts")
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
+# Load Whisper (small/base/medium/large)
+model = whisper.load_model("medium")  # speed vs accuracy tradeoff
 
 
 class TqdmLoggingHandler(logging.Handler):
