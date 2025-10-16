@@ -8,15 +8,18 @@ import whisper
 from tqdm import tqdm
 from yt_dlp import YoutubeDL
 
+# === SETUP ===
 SAVE_DIR = Path("transcripts")
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
 # Load Whisper (small/base/medium/large)
-model = whisper.load_model("medium")  # speed vs accuracy tradeoff
+model = whisper.load_model("small")  # adjust to "medium" if you prefer
+USE_FP16 = torch.cuda.is_available()
 
 
+# === LOGGING ===
 class TqdmLoggingHandler(logging.Handler):
     """Route logging records through tqdm to keep progress bars intact."""
-
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
@@ -28,17 +31,13 @@ class TqdmLoggingHandler(logging.Handler):
 logger = logging.getLogger("data_collection")
 logger.setLevel(logging.INFO)
 logger.handlers.clear()
-
 _handler = TqdmLoggingHandler()
 _handler.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(_handler)
 logger.propagate = False
 
-# Load Whisper model once so GPU memory is reused.
-model = whisper.load_model("small")
-USE_FP16 = torch.cuda.is_available()
 
-
+# === UTILITIES ===
 def ensure_single_mp3_extension(path: Path) -> Path:
     """Rename the given file so it ends with exactly one .mp3 extension."""
     if not path.exists():
@@ -53,6 +52,7 @@ def ensure_single_mp3_extension(path: Path) -> Path:
     return cleaned_path
 
 
+# === DOWNLOAD ===
 def download_audio(video_id: str) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
     logger.info(f"▶️  Starting download for {video_id}")
@@ -80,6 +80,7 @@ def download_audio(video_id: str) -> Path:
     return audio_path
 
 
+# === TRANSCRIBE ===
 def transcribe_audio(audio_path: Path, transcript_path: Path, video_id: str) -> None:
     logger.info(f"🎧  Starting transcription for {video_id}")
     result = model.transcribe(str(audio_path), fp16=USE_FP16)
@@ -92,20 +93,10 @@ def transcribe_audio(audio_path: Path, transcript_path: Path, video_id: str) -> 
     try:
         audio_path.unlink(missing_ok=True)
     except OSError as err:
-        logger.warning("Unable to delete audio file {audio_path}: {err}")
-
-def process_video(video_id: str) -> None:
-    mp3_path = SAVE_DIR / f"{video_id}.mp3"
-    transcript_path = SAVE_DIR / f"{video_id}.txt"
-
-    if mp3_path.exists() or transcript_path.exists():
-        logger.info(f"⏭️  Skipping {video_id} (already exists)")
-        return
-
-    audio_path = download_audio(video_id)
-    transcribe_audio(audio_path, transcript_path, video_id)
+        logger.warning(f"⚠️  Unable to delete audio file {audio_path}: {err}")
 
 
+# === HELPERS ===
 def load_video_ids(source: Path) -> List[str]:
     if not source.exists():
         raise FileNotFoundError(f"Input file not found: {source}")
@@ -118,13 +109,39 @@ def iter_video_ids(source: Path) -> Iterable[str]:
         yield video_id
 
 
+# === MAIN ===
 def main() -> None:
     video_ids = list(iter_video_ids(Path("scrape.txt")))
-    for video_id in tqdm(video_ids, desc="Processing videos", unit="video"):
+
+    # STEP 1: Download all MP3s first
+    logger.info("📥  Starting download phase...")
+    for video_id in tqdm(video_ids, desc="Downloading", unit="video"):
+        mp3_path = SAVE_DIR / f"{video_id}.mp3"
+        if mp3_path.exists():
+            logger.info(f"⏭️  Skipping {video_id} (already downloaded)")
+            continue
         try:
-            process_video(video_id)
+            download_audio(video_id)
         except Exception as exc:
-            logger.error(f"❌  Error processing {video_id}: {exc}")
+            logger.error(f"❌  Error downloading {video_id}: {exc}")
+
+    # STEP 2: Transcribe all MP3s afterward
+    logger.info("🧠  Starting transcription phase...")
+    mp3_files = list(SAVE_DIR.glob("*.mp3"))
+    for mp3_path in tqdm(mp3_files, desc="Transcribing", unit="file"):
+        video_id = mp3_path.stem
+        transcript_path = SAVE_DIR / f"{video_id}.txt"
+
+        if transcript_path.exists():
+            logger.info(f"⏭️  Skipping {video_id} (already transcribed)")
+            continue
+
+        try:
+            transcribe_audio(mp3_path, transcript_path, video_id)
+        except Exception as exc:
+            logger.error(f"❌  Error transcribing {video_id}: {exc}")
+
+    logger.info("🏁  All videos processed successfully.")
 
 
 if __name__ == "__main__":
@@ -132,3 +149,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logger.error("❌  Processing interrupted by user")
+
