@@ -49,7 +49,7 @@ def transcribe_audio(audio_path: Path, transcript_path: Path, video_id: str) -> 
 # === MAIN ===
 def main() -> None:
     logger.info("🧠  Starting transcription phase...")
-    mp3_files = sorted(SAVE_DIR.glob("*.mp3"))
+    mp3_files = sorted(SAVE_DIR.glob("*.mp3"), reverse=reverse)
     for mp3_path in tqdm(mp3_files, desc="Transcribing", unit="file"):
         video_id = mp3_path.stem
         transcript_path = SAVE_DIR / f"{video_id}.txt"
@@ -68,6 +68,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        import sys
+        reverse = "--reverse" in sys.argv
+        main(reverse=reverse)
     except KeyboardInterrupt:
         logger.error("❌  Processing interrupted by user")
+
